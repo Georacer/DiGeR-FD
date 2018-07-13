@@ -6,7 +6,7 @@ utils.py
 General utilities and functionalities
 """
 
-import logging
+import diger_fd.logging_utils.dgrlogging as dgrlog
 
 
 class Borg():
@@ -46,8 +46,12 @@ class SingletonMeta(type):
             cls._instances[cls] = super(SingletonMeta, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
+    def _drop(self):
+        """Drop the instances (for testing purposes)"""
+        self._instances = {}
 
-class IdProvider(metaclass=SingletonMeta):
+
+class IdProvider(dgrlog.LogMixin, metaclass=SingletonMeta):
     """Provides ids for model elements
 
     Attributes
@@ -58,6 +62,7 @@ class IdProvider(metaclass=SingletonMeta):
 
     def __init__(self):
         self._models = {}
+        super().__init__(__name__)
 
     def new_model(self, mdl_name):
         if mdl_name in self._models.keys():
@@ -65,18 +70,22 @@ class IdProvider(metaclass=SingletonMeta):
                            format(mdl_name))
         'Initialize model ID'
         self._models[mdl_name] = 0
+        self._logger.debug('Registered new model:{}'.format(mdl_name))
 
     def req_id(self, mdl_name):
         if mdl_name not in self._models.keys():
             raise KeyError("Model name {} not registered in IdProvider".
                            format(mdl_name))
         self._models[mdl_name] += 1
+        self._logger.debug('Allocated new ID:{} for model:{}'.
+                           format(self._models[mdl_name], mdl_name))
         return self._models[mdl_name]
 
     def clear(self):
         """Reset the IdProvider. Deleting objects will not work, because
         the class is a Singleton"""
         self._models = {}
+        self._logger.debug('Cleared ID registry')
 
 
 class DgrException(Exception):

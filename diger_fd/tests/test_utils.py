@@ -8,6 +8,7 @@ import unittest as ut
 
 """ IdProvider tests """
 class IdProviderTestCase(ut.TestCase):
+
     def setUp(self):
         import diger_fd.utils as utils
         self.idp1 = utils.IdProvider()
@@ -40,4 +41,5 @@ class IdProviderTestCase(ut.TestCase):
         self.assertEqual(self.idp2._models, {'m1': 0, 'm2': 1})
 
     def tearDown(self):
-        self.idp1.clear()
+        import diger_fd.utils as utils
+        utils.IdProvider._drop()
