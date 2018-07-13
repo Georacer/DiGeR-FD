@@ -6,6 +6,8 @@ utils.py
 General utilities and functionalities
 """
 
+import logging
+
 
 class Borg():
     """Borg class, used for subclassing.
@@ -25,27 +27,27 @@ class Borg():
         self.__dict__ = self.__shared_state
 
 
-class Singleton():
-    """Singleton class, used for subclassing.
+class SingletonMeta(type):
+    """Singleton metaclass, used for creating singletons
 
-    Objects of subclasses will be shared across each subclass, but not across
-    all subclasses.
+    Objects of this type of class will be singletons, but not across their
+    subclasses.
 
     Attributes
     ----------
-    _instance :
-        The shared instance of the singleton
+    _instances :
+        Dictionary for bookkeeping of what has been instantiated
     """
 
-    _instance = None
+    _instances = {}
 
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = object.__new__(cls)
-        return cls._instance
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(SingletonMeta, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
 
 
-class IdProvider(Singleton):
+class IdProvider(metaclass=SingletonMeta):
     """Provides ids for model elements
 
     Attributes
@@ -70,6 +72,11 @@ class IdProvider(Singleton):
                            format(mdl_name))
         self._models[mdl_name] += 1
         return self._models[mdl_name]
+
+    def clear(self):
+        """Reset the IdProvider. Deleting objects will not work, because
+        the class is a Singleton"""
+        self._models = {}
 
 
 class DgrException(Exception):
