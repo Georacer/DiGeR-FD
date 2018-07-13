@@ -15,4 +15,3 @@ logging.config.fileConfig(config_path)
 class LogMixin():
     def __init__(self, prefix):
         self._logger = logging.getLogger('.'.join([prefix, self.__class__.__name__]))
-#        self._logger.

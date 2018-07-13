@@ -89,8 +89,16 @@ class IdProvider(dgrlog.LogMixin, metaclass=SingletonMeta):
 
 
 class DgrException(Exception):
-    """Base exception for the whole package"""
+    """Base class for exceptions in DiGeR-FD"""
 
+class DgrError(DgrException):
+    """Base error for the whole package"""
     def __init__(self, message):
-        super(DgrException, self).__init__(message)
+        super().__init__(message)
+        self.message = message
+
+class DgrWarning(Warning):
+    """Base warning for the whole package"""
+    def __init__(self, message):
+        super().__init__(message)
         self.message = message
