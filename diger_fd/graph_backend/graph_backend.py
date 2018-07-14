@@ -10,10 +10,14 @@ import diger_fd.logging_utils.dgrlogging as dgrlog
 import diger_fd.utils as utils
 
 import networkx as nx
+from nx.algorithms import bipartite
 from enum import Enum
 import collections
 
 
+# =============================================================================
+# Enumerations
+# =============================================================================
 class NodeType(Enum):
     """Enumeration of the two bipartite graph sets, for use with the bipartite
     functionalitites of netkworkx"""
@@ -21,7 +25,14 @@ class NodeType(Enum):
     VARIABLE = 1
 
 
-class BadGraphError(utils.DgrException):
+# =============================================================================
+# Errors and Warnings
+# =============================================================================
+class GraphInterfaceError(utils.DgrError):
+    """Wrong use of interface error"""
+
+
+class BadGraphError(utils.DgrError):
     """Graph is not available for use """
 
     def __init__(self, message):
@@ -29,10 +40,19 @@ class BadGraphError(utils.DgrException):
         self.message = message
 
 
-GraphMetadataEntry = collections.namedtuple('GraphMetadataEntry',
-                                            'is_initialized parent')
+# =============================================================================
+# Custom structures
+# =============================================================================
+class GraphMetadataEntry(collections.UserDict):
+    """Metadata record for each graph entry"""
+    def __init__(self):
+        self.data['is_initialized'] = False
+        self.data['parent'] = None
 
 
+# =============================================================================
+# Main body
+# =============================================================================
 class GraphBackend(dgrlog.LogMixin, metaclass=utils.SingletonMeta):
     """Class to handle all graphs and provide the graph API"""
 
@@ -47,6 +67,26 @@ class GraphBackend(dgrlog.LogMixin, metaclass=utils.SingletonMeta):
         self.graphs = dict()
         self._logger.debug('Cleared graph_backend')
 
+    def __contains__(self, mdl_name):
+        if mdl_name in self.graphs.keys():
+            return True
+        else:
+            return False
+
+    def __missing__(self, mdl_name):
+        raise KeyError('Graph {} is not registered'.format(mdl_name))
+
+    def __getitem__(self, mdl_name):
+        """Query for a graph with key k"""
+        return self.graphs[mdl_name]
+
+    def __setitem__(self, mdl_name, value):
+        raise GraphInterfaceError('Graphs cannot be set by assignment')
+
+    def __delitem__(self, mdl_name):
+        del self.graphs[mdl_name]
+        del self.graphs_metadata[mdl_name]
+
     def allocate_graph(self, mdl_name=None):
         """Create a new graph"""
         if mdl_name is None:
@@ -57,23 +97,129 @@ class GraphBackend(dgrlog.LogMixin, metaclass=utils.SingletonMeta):
             self._logger.warning('Graph {} already registered'.format(mdl_name))
             raise KeyError('Graphs must have unique names')
 
-        self.graphs[mdl_name] = GraphBipartite(mdl_name)
-        self.graphs_metadata[mdl_name] = GraphMetadataEntry(
+        self.graphs[mdl_name] = BipartiteGraph(mdl_name)
+        self.graphs_metadata[mdl_name] = GraphMetadataEntry({
                 is_initialized=False,
-                parent=mdl_name)
+                parent=mdl_name
+                })
 
-    def add_equations(self, mdl_name, equ_ids):
-
-    def add_variables(self, mdl_name, var_ids):
-
-    def add_edges(self, mdl_name, edge_ids, edge_weights=None):
-
-    def check_initialized(self, mdl_name=None):
-        if not self.graphs_metadata[mdl_name].is_initialized:
-            raise BadGraphError('Graph not initialized yet')
+    def set_initialized(self, mdl_name):
+        """Mark a graph as initalized and available for use"""
+        self.graphs_metadata[mdl_name]['is_initialized'] = True
 
 
-class GraphBipartite(nx.Digraph):
+class BipartiteGraph(nx.Digraph):
     """Bipartite graph class"""
     def __init__(self, mdl_name):
         super().__init__(name=mdl_name)
+
+    # Add methods
+    def add_equations(self, equ_ids):
+        """Add equations to the graph"""
+        self.add_nodes_from([equ_ids], biparite=NodeType.EQUATION)
+
+    def add_variables(self, var_ids):
+        """Add variables to the graph"""
+        self.add_nodes_from([var_ids], biparite=NodeType.VARIABLE)
+
+    def add_edges(self, equ_ids, var_ids, edge_ids, edge_weights=None):
+        if not len(equ_ids) == len(var_ids) == len(edge_ids):
+            raise GraphInterfaceError('equ_ids, var_ids and equ_ids do not have the same length')
+
+        if edge_weights is None:
+            edge_weights = len(equ_ids)*[1]
+
+        for equ_id, var_id, edge_id, edge_weight in zip(equ_ids, var_ids, edge_ids, edge_weights):
+            self.add_edge(equ_id, var_id, weight=edge_weight, id=edge_id)
+
+    # Delete methods
+    def del_equations(self, equ_ids):
+        """Delete equations from graph"""
+        self.remove_nodes_from([equ_ids])
+
+    def del_variables(self, var_ids):
+        """Delete variables from graph"""
+        self.remove_nodes_from([var_ids])
+
+    def del_edges(self, edge_ids):
+        edges = self._get_edge_pairs(edge_ids)
+        self.remove_edges_from(edges))
+
+    # Get methods
+    def get_edges(self, node_ids):
+        """
+        Get edge_ids of input nodes.
+        Returns a tuple of tuples for each node_id
+        """
+        answer = []
+        for node_id in node_ids:
+            edge_list = []
+            for _, _, d in self.edges(nbunch=node_id, data=True):
+                edge_list.append(d[id])
+            answer.append(tuple(edge_list))
+        return tuple(answer)
+
+    def _get_edge_pairs(self, edge_ids):
+        """Get the (n1, n2) pairs of edges for the requested edge_ids"""
+        answer = []
+        for n1, n2, edge_id in self.edges.data('id'):
+            if edge_id in edge_ids:
+                answer.append((n1, n2))
+        return tuple(answer)
+
+    def get_neighbours(self, node_ids):
+        """Get the neighbours respecting directionality"""
+        answer = []
+        for node_id in node_ids:
+            answer.append(tuple(self.neighbors(node_id)))
+        return tuple(answer)
+
+    def get_neighbours_undir(self, node_ids):
+        """Get the neighbours regardless of directionality"""
+        answer = []
+        for node_id in node_ids:
+            neighbors = set(self.successors(node_id))
+                        + set(self.predecessors(node_id))
+            answer.append(tuple(neighbors))
+        return tuple(answer)
+
+    # Set methods
+    def set_e2v(self, edge_ids):
+        """Direct an edge pair from equations to variables"""
+        edges = self._get_edge_pairs(edge_ids)
+        for n1, n2 in edges:
+            if n1 in self.variables:
+                self.remove_edge(n1, n2)
+
+    def set_v2e(self, edge_ids):
+        """Direct an edge pair from variables to equations"""
+        edges = self._get_edge_pairs(edge_ids)
+        for n1, n2 in edges:
+            if n1 in self.equations:
+                self.remove_edge(n1, n2)
+
+    def set_edge_weight(self, edge_ids, weights):
+        edges = self._get_edge_pairs(edge_ids)
+        for n1, n2, weight in zip(edges, weights):
+            self.edges[n1, n2]['weight'] = weight
+
+    @property
+    def numEqs(self):
+        """Return the number of equations in the graph"""
+        return len()
+
+    @property
+    def equations(self):
+        """Return the equation ids as a tuple"""
+        return tuple(n for n, d in self.nodes(data=True)
+                if d['bipartite']==NodeType.EQUATION)
+
+    @property
+    def variables(self):
+        """Return the variable ids as a tuple"""
+        return tuple(n for n, d in self.nodes(data=True)
+                if d['bipartite']==NodeType.VARIABLE)
+
+    def check_initialized(self):
+        if not self.graphs_metadata[mdl_name].is_initialized:
+            raise BadGraphError('Graph not initialized yet')
