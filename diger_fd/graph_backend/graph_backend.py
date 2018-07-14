@@ -10,7 +10,6 @@ import diger_fd.logging_utils.dgrlogging as dgrlog
 import diger_fd.utils as utils
 
 import networkx as nx
-from nx.algorithms import bipartite
 from enum import Enum
 import collections
 
@@ -45,9 +44,13 @@ class BadGraphError(utils.DgrError):
 # =============================================================================
 class GraphMetadataEntry(collections.UserDict):
     """Metadata record for each graph entry"""
-    def __init__(self):
-        self.data['is_initialized'] = False
-        self.data['parent'] = None
+    def __init__(self, init_dict):
+        if init_dict is not None:
+            super().__init__(init_dict)
+        else:
+            super().__init__()
+            self.data['is_initialized'] = False
+            self.data['parent'] = None
 
 
 # =============================================================================
@@ -65,6 +68,7 @@ class GraphBackend(dgrlog.LogMixin, metaclass=utils.SingletonMeta):
         """Reset the graph_backend. Deleting objects will not work, because
         the class is a Singleton"""
         self.graphs = dict()
+        self.graphs_metadata.clear()
         self._logger.debug('Cleared graph_backend')
 
     def __contains__(self, mdl_name):
@@ -99,8 +103,8 @@ class GraphBackend(dgrlog.LogMixin, metaclass=utils.SingletonMeta):
 
         self.graphs[mdl_name] = BipartiteGraph(mdl_name)
         self.graphs_metadata[mdl_name] = GraphMetadataEntry({
-                is_initialized=False,
-                parent=mdl_name
+                'is_initialized':False,
+                'parent':mdl_name
                 })
 
     def set_initialized(self, mdl_name):
@@ -108,7 +112,7 @@ class GraphBackend(dgrlog.LogMixin, metaclass=utils.SingletonMeta):
         self.graphs_metadata[mdl_name]['is_initialized'] = True
 
 
-class BipartiteGraph(nx.Digraph):
+class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
     """Bipartite graph class"""
     def __init__(self, mdl_name):
         super().__init__(name=mdl_name)
@@ -122,14 +126,20 @@ class BipartiteGraph(nx.Digraph):
         """Add variables to the graph"""
         self.add_nodes_from([var_ids], biparite=NodeType.VARIABLE)
 
-    def add_edges(self, equ_ids, var_ids, edge_ids, edge_weights=None):
-        if not len(equ_ids) == len(var_ids) == len(edge_ids):
-            raise GraphInterfaceError('equ_ids, var_ids and equ_ids do not have the same length')
-
-        if edge_weights is None:
-            edge_weights = len(equ_ids)*[1]
-
-        for equ_id, var_id, edge_id, edge_weight in zip(equ_ids, var_ids, edge_ids, edge_weights):
+    def add_edges(self, edges_iterator):
+        """Add edges to the graph
+        edges_iterator : contains items (equ_id, var_id, edge_id, weight=None)
+        """
+        for edge in edges_iterator:
+            if len(edge)==3:
+                equ_id, var_id, edge_id = edge
+                edge_weight = None
+            elif len(edge)==4:
+                equ_id, var_id, edge_id, edge_weight = edge
+            else:
+                raise GraphInterfaceError('Edges are specified by at least (equ_id, var_id, edge_id)')
+            if edge_weight is None:
+                edge_weight = 1
             self.add_edge(equ_id, var_id, weight=edge_weight, id=edge_id)
 
     # Delete methods
@@ -143,7 +153,7 @@ class BipartiteGraph(nx.Digraph):
 
     def del_edges(self, edge_ids):
         edges = self._get_edge_pairs(edge_ids)
-        self.remove_edges_from(edges))
+        self.remove_edges_from(edges)
 
     # Get methods
     def get_edges(self, node_ids):
@@ -178,8 +188,8 @@ class BipartiteGraph(nx.Digraph):
         """Get the neighbours regardless of directionality"""
         answer = []
         for node_id in node_ids:
-            neighbors = set(self.successors(node_id))
-                        + set(self.predecessors(node_id))
+            neighbors = (set(self.successors(node_id))
+                        + set(self.predecessors(node_id)) )
             answer.append(tuple(neighbors))
         return tuple(answer)
 
@@ -221,5 +231,5 @@ class BipartiteGraph(nx.Digraph):
                 if d['bipartite']==NodeType.VARIABLE)
 
     def check_initialized(self):
-        if not self.graphs_metadata[mdl_name].is_initialized:
+        if not self.graphs_metadata[mdl_name]['is_initialized']:
             raise BadGraphError('Graph not initialized yet')
