@@ -52,6 +52,12 @@ def add_g1(gb):
 class TestBasic():
     """Tests to cover basic functionality"""
 
+    def test_singleton(self):
+        add_g1(self.gb)
+        gb2 = graph_backend.GraphBackend()
+        assert(self.gb == gb2)
+        assert('g1' in gb2)
+
     def test_allocate_graphs(self):
         self.gb.allocate_graph('g1')
         assert('g1' in self.gb)
