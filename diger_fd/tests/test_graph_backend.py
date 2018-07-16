@@ -21,7 +21,7 @@ def init_graph_backend(request):
 
 
 @pytest.fixture()
-def g1(request):
+def g1():
     print('Creating data for g1')
     mdl_name = 'g1'
     equ_ids = (1, 6)
@@ -34,8 +34,9 @@ def g1(request):
              (2, 6, 7),
              (6, 4, 8),  # This is a directed edge
              )
-    answer = namedtuple('g1', 'mdl_name equ_ids var_ids edges')
-    return answer._make([mdl_name, equ_ids, var_ids, edges])
+    num_edges = 4  # 3 bidirectional and 1 single-directional
+    answer = namedtuple('g1', 'mdl_name equ_ids var_ids edges num_edges')
+    return answer._make([mdl_name, equ_ids, var_ids, edges, num_edges])
 
 
 @pytest.mark.usefixtures('init_graph_backend')
@@ -58,3 +59,21 @@ class TestBasic():
         self.gb[g1.mdl_name].add_equations(g1.equ_ids)
         self.gb[g1.mdl_name].add_variables(g1.var_ids)
         self.gb[g1.mdl_name].add_edges(g1.edges)
+        assert(self.gb[g1.mdl_name].num_eqs == len(g1.equ_ids))
+        assert(set(self.gb[g1.mdl_name].equations) == set(g1.equ_ids))
+        assert(self.gb[g1.mdl_name].num_vars == len(g1.var_ids))
+        assert(set(self.gb[g1.mdl_name].variables) == set(g1.var_ids))
+        assert(self.gb[g1.mdl_name].num_edges == g1.num_edges)
+        assert(set(self.gb[g1.mdl_name].edges)
+               == set(ids for _, _, ids in g1.edges))
+
+    def test_clear(self):
+        self.gb.allocate_graph('g1')
+        self.gb.allocate_graph('g2')
+        self.gb.clear()
+        assert(len(self.gb.graphs.items()) == 0)
+        assert(len(self.gb.graphs_metadata.items()) == 0)
+
+
+#class TestErrors():
+#    """Test raising of errors"""

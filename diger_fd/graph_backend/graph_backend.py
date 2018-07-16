@@ -103,8 +103,8 @@ class GraphBackend(dgrlog.LogMixin, metaclass=utils.SingletonMeta):
 
         self.graphs[mdl_name] = BipartiteGraph(mdl_name)
         self.graphs_metadata[mdl_name] = GraphMetadataEntry({
-                'is_initialized':False,
-                'parent':mdl_name
+                'is_initialized': False,
+                'parent': mdl_name
                 })
 
     def set_initialized(self, mdl_name):
@@ -116,25 +116,27 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
     """Bipartite graph class"""
     def __init__(self, mdl_name):
         super().__init__(name=mdl_name)
+        # Remap networkx edges. .edges is meant to be a public API
+        self.nx_edges = super().edges
 
     # Add methods
     def add_equations(self, equ_ids):
         """Add equations to the graph"""
-        self.add_nodes_from([equ_ids], biparite=NodeType.EQUATION)
+        self.add_nodes_from(equ_ids, bipartite=NodeType.EQUATION)
 
     def add_variables(self, var_ids):
         """Add variables to the graph"""
-        self.add_nodes_from([var_ids], biparite=NodeType.VARIABLE)
+        self.add_nodes_from(var_ids, bipartite=NodeType.VARIABLE)
 
     def add_edges(self, edges_iterator):
         """Add edges to the graph
         edges_iterator : contains items (equ_id, var_id, edge_id, weight=None)
         """
         for edge in edges_iterator:
-            if len(edge)==3:
+            if len(edge) == 3:
                 equ_id, var_id, edge_id = edge
                 edge_weight = None
-            elif len(edge)==4:
+            elif len(edge) == 4:
                 equ_id, var_id, edge_id, edge_weight = edge
             else:
                 raise GraphInterfaceError('Edges are specified by at least (equ_id, var_id, edge_id)')
@@ -164,7 +166,7 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
         answer = []
         for node_id in node_ids:
             edge_list = []
-            for _, _, d in self.edges(nbunch=node_id, data=True):
+            for _, _, d in self.nx_edges(nbunch=node_id, data=True):
                 edge_list.append(d[id])
             answer.append(tuple(edge_list))
         return tuple(answer)
@@ -172,7 +174,7 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
     def _get_edge_pairs(self, edge_ids):
         """Get the (n1, n2) pairs of edges for the requested edge_ids"""
         answer = []
-        for n1, n2, edge_id in self.edges.data('id'):
+        for n1, n2, edge_id in self.nx_edges.data('id'):
             if edge_id in edge_ids:
                 answer.append((n1, n2))
         return tuple(answer)
@@ -214,22 +216,39 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
             self.edges[n1, n2]['weight'] = weight
 
     @property
-    def numEqs(self):
+    def num_eqs(self):
         """Return the number of equations in the graph"""
-        return len()
+        return len(self.equations)
+
+    @property
+    def num_vars(self):
+        """Return the number of variables in the graph"""
+        return len(self.variables)
+
+    @property
+    def num_edges(self):
+        """Return the number of edges in the graph
+        Edges with the same ID (two directions) are not counted twice
+        """
+        return len(set(self.edges))
 
     @property
     def equations(self):
         """Return the equation ids as a tuple"""
         return tuple(n for n, d in self.nodes(data=True)
-                if d['bipartite']==NodeType.EQUATION)
+                     if d['bipartite'] == NodeType.EQUATION)
 
     @property
     def variables(self):
         """Return the variable ids as a tuple"""
         return tuple(n for n, d in self.nodes(data=True)
-                if d['bipartite']==NodeType.VARIABLE)
+                     if d['bipartite'] == NodeType.VARIABLE)
 
-    def check_initialized(self):
+    @property
+    def edges(self):
+        """Return the edge ids as a tuple"""
+        return tuple(edge_id for _, _, edge_id in self.nx_edges.data('id'))
+
+    def check_initialized(self, mdl_name):
         if not self.graphs_metadata[mdl_name]['is_initialized']:
             raise BadGraphError('Graph not initialized yet')
