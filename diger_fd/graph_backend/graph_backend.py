@@ -111,6 +111,11 @@ class GraphBackend(dgrlog.LogMixin, metaclass=utils.SingletonMeta):
         """Mark a graph as initalized and available for use"""
         self.graphs_metadata[mdl_name]['is_initialized'] = True
 
+        
+    def check_initialized(self, mdl_name):
+        if not self.graphs_metadata[mdl_name]['is_initialized']:
+            raise BadGraphError('Graph not initialized yet')
+
 
 class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
     """Bipartite graph class"""
@@ -249,6 +254,3 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
         """Return the edge ids as a tuple"""
         return tuple(edge_id for _, _, edge_id in self.nx_edges.data('id'))
 
-    def check_initialized(self, mdl_name):
-        if not self.graphs_metadata[mdl_name]['is_initialized']:
-            raise BadGraphError('Graph not initialized yet')

@@ -39,6 +39,15 @@ def g1():
     return answer._make([mdl_name, equ_ids, var_ids, edges, num_edges])
 
 
+def add_g1(gb):
+    """Add g1 graph to the passed graph_backend"""
+    new_graph = g1()
+    gb.allocate_graph(new_graph.mdl_name)
+    gb[new_graph.mdl_name].add_equations(new_graph.equ_ids)
+    gb[new_graph.mdl_name].add_variables(new_graph.var_ids)
+    gb[new_graph.mdl_name].add_edges(new_graph.edges)
+
+
 @pytest.mark.usefixtures('init_graph_backend')
 class TestBasic():
     """Tests to cover basic functionality"""
@@ -55,10 +64,7 @@ class TestBasic():
             self.gb.allocate_graph('g1')
 
     def test_create_single_graph(self, g1):
-        self.gb.allocate_graph(g1.mdl_name)
-        self.gb[g1.mdl_name].add_equations(g1.equ_ids)
-        self.gb[g1.mdl_name].add_variables(g1.var_ids)
-        self.gb[g1.mdl_name].add_edges(g1.edges)
+        add_g1(self.gb)
         assert(self.gb[g1.mdl_name].num_eqs == len(g1.equ_ids))
         assert(set(self.gb[g1.mdl_name].equations) == set(g1.equ_ids))
         assert(self.gb[g1.mdl_name].num_vars == len(g1.var_ids))
@@ -75,5 +81,19 @@ class TestBasic():
         assert(len(self.gb.graphs_metadata.items()) == 0)
 
 
-#class TestErrors():
-#    """Test raising of errors"""
+@pytest.mark.usefixtures('init_graph_backend')
+class TestErrors():
+    """Test raising of errors"""
+
+    def test_missing_graph(self):
+        with pytest.raises(KeyError):
+            self.gb['unobtainium']
+
+    def test_assignment(self):
+        with pytest.raises(graph_backend.GraphInterfaceError):
+            self.gb['unsettable'] = {'dict': 'contents'}
+
+    def test_uninitialized_graph(self):
+        add_g1(self.gb)
+        with pytest.raises(graph_backend.BadGraphError):
+            self.gb.check_initialized('g1')
