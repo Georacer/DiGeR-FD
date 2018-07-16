@@ -86,6 +86,23 @@ class TestBasic():
         assert(len(self.gb.graphs.items()) == 0)
         assert(len(self.gb.graphs_metadata.items()) == 0)
 
+    def test_get_edge_pairs(self):
+        add_g1(self.gb)
+        pairs_7 = self.gb['g1']._get_edge_pairs(7)
+        assert((6, 2) in pairs_7)
+        assert((2, 6) in pairs_7)
+        pairs_8 = self.gb['g1']._get_edge_pairs(8)
+        assert(((6, 4),) == pairs_8)
+
+    def test_get_edge_ids(self):
+        add_g1(self.gb)
+        ids = self.gb['g1'].get_edge_ids(((6, 4),))
+        assert(ids[0] == 8)
+
+    def test_get_edges(self):
+        add_g1(self.gb)
+        edge_ids = self.gb['g1'].get_edges(6)[0]
+        assert(sorted(edge_ids) == [7, 8])
 
 @pytest.mark.usefixtures('init_graph_backend')
 class TestBipartite():
@@ -95,12 +112,12 @@ class TestBipartite():
         add_g1(self.gb)
         # Test equations
         equ_ids = self.gb['g1'].equations
-        nodeset = self.gb['g1'].get_property(equ_ids, 'bipartite')
+        nodeset = self.gb['g1'].get_node_property(equ_ids, 'bipartite')
         for node_type in nodeset:
             assert(node_type == 0)
         # Test variables
         var_ids = self.gb['g1'].variables
-        nodeset = self.gb['g1'].get_property(var_ids, 'bipartite')
+        nodeset = self.gb['g1'].get_node_property(var_ids, 'bipartite')
         for node_type in nodeset:
             assert(node_type == 1)
 
