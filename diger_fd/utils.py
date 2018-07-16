@@ -88,6 +88,14 @@ class IdProvider(dgrlog.LogMixin, metaclass=SingletonMeta):
         self._logger.debug('Cleared ID registry')
 
 
+def to_list(arg):
+    """If arg is not iterable, wrap it into a list"""
+    if not hasattr(arg, '__iter__'):
+        return [arg]
+    else:
+        return arg
+
+
 # =============================================================================
 # Errors and Warnings
 # =============================================================================
