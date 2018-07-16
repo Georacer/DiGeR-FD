@@ -10,14 +10,14 @@ import diger_fd.logging_utils.dgrlogging as dgrlog
 import diger_fd.utils as utils
 
 import networkx as nx
-from enum import Enum
+from enum import IntEnum
 import collections
 
 
 # =============================================================================
 # Enumerations
 # =============================================================================
-class NodeType(Enum):
+class NodeType(IntEnum):
     """Enumeration of the two bipartite graph sets, for use with the bipartite
     functionalitites of netkworkx"""
     EQUATION = 0
@@ -33,10 +33,6 @@ class GraphInterfaceError(utils.DgrError):
 
 class BadGraphError(utils.DgrError):
     """Graph is not available for use """
-
-    def __init__(self, message):
-        super().__init__(message)
-        self.message = message
 
 
 # =============================================================================
@@ -111,7 +107,7 @@ class GraphBackend(dgrlog.LogMixin, metaclass=utils.SingletonMeta):
         """Mark a graph as initalized and available for use"""
         self.graphs_metadata[mdl_name]['is_initialized'] = True
 
-        
+
     def check_initialized(self, mdl_name):
         if not self.graphs_metadata[mdl_name]['is_initialized']:
             raise BadGraphError('Graph not initialized yet')
@@ -199,6 +195,17 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
                         + set(self.predecessors(node_id)) )
             answer.append(tuple(neighbors))
         return tuple(answer)
+
+    def get_property(self, node_ids=None, key_str=None):
+        """Return a tuple of the item value for the requested nodes"""
+        if node_ids is None:
+            node_ids = self.nodes
+
+        if key_str is None:
+            raise ValueError('Property string must be provided')
+
+        return tuple(d[key_str] for n, d in self.nodes(data=True)
+                     if n in node_ids)
 
     # Set methods
     def set_e2v(self, edge_ids):

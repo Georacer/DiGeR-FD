@@ -82,6 +82,24 @@ class TestBasic():
 
 
 @pytest.mark.usefixtures('init_graph_backend')
+class TestBipartite():
+    """Test bipartite properties of the graph, as implemented by networkx"""
+
+    def test_enum(self):
+        add_g1(self.gb)
+        # Test equations
+        equ_ids = self.gb['g1'].equations
+        nodeset = self.gb['g1'].get_property(equ_ids, 'bipartite')
+        for node_type in nodeset:
+            assert(node_type == 0)
+        # Test variables
+        var_ids = self.gb['g1'].variables
+        nodeset = self.gb['g1'].get_property(var_ids, 'bipartite')
+        for node_type in nodeset:
+            assert(node_type == 1)
+
+
+@pytest.mark.usefixtures('init_graph_backend')
 class TestErrors():
     """Test raising of errors"""
 
