@@ -148,22 +148,26 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
     # Delete methods
     def del_equations(self, equ_ids):
         """Delete equations from graph"""
-        self.remove_nodes_from([equ_ids])
+        equ_ids = utils.to_list(equ_ids)
+        self.remove_nodes_from(equ_ids)
 
     def del_variables(self, var_ids):
         """Delete variables from graph"""
+        var_ids = utils.to_list(var_ids)
         self.remove_nodes_from([var_ids])
 
     def del_edges(self, edge_ids):
+        edge_ids = utils.to_list(edge_ids)
         edges = self._get_edge_pairs(edge_ids)
         self.remove_edges_from(edges)
 
     # Get methods
-    def get_edges(self, node_ids):
+    def _get_edges(self, node_ids):
         """
         Get edge_ids of input nodes.
         Returns a tuple of tuples for each node_id
         """
+        node_ids = utils.to_list(node_ids)
         answer = []
         for node_id in node_ids:
             edge_list = []
@@ -173,15 +177,80 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
         return tuple(answer)
 
     def _get_edge_pairs(self, edge_ids):
-        """Get the (n1, n2) pairs of edges for the requested edge_ids"""
+        """Get the (n1, n2) pairs of edges for the requested edge_ids
+        Retuns a tuple of tuples with max 2 tuples"""
+        edge_ids = utils.to_list(edge_ids)
         answer = []
         for n1, n2, edge_id in self.nx_edges.data('id'):
             if edge_id in edge_ids:
                 answer.append((n1, n2))
         return tuple(answer)
 
+    def get_equations(self, ids):
+        """Get equations related to a variable or edge
+        Returns a tuple of tuples"""
+        ids = utils.to_list(ids)
+        answer = []
+        for e_id in ids:
+            if e_id in self.variables:
+                answer.append(tuple(self.get_neighbours_undir(e_id)))
+            elif e_id in self.edges:
+                u, v = self._get_edge_pairs(e_id)[0]  # Get the first of the max 2 pairs
+                if u in self.equations:
+                    answer.append((u,))
+                else:
+                    answer.append((v,))
+            elif e_id in self.equations:
+                self._logger.warning('Requested get_equations from an equation')
+                answer.append((e_id,))
+
+    def get_variables(self, ids):
+        """Get variables related to an equation or edge"""
+        ids = utils.to_list(ids)
+        answer = []
+        for e_id in ids:
+            if e_id in self.equations:
+                answer.append(tuple(self.get_neighbours_undir(e_id)))
+            elif e_id in self.edges:
+                u, v = self._get_edge_pairs(e_id)[0]  # Get the first of the max 2 pairs
+                if u in self.variables:
+                    answer.append((u,))
+                else:
+                    answer.append((v,))
+            elif e_id in self.variables:
+                self._logger.warning('Requested get_variables from a variable')
+                answer.append((e_id,))
+
+    def get_edges(self, ids):
+        """Get the edges related to provided elements"""
+        ids = utils.to_list(ids)
+        answer = []
+        for e_id in ids:
+            print('Examining id {}'.format(e_id))
+            if (e_id in self.equations) or (e_id in self.variables):
+                local_edges = []
+                neighbours = self.get_neighbours_undir(e_id)[0]
+                print('Its neighbours are {}'.format(neighbours))
+                for n in neighbours:
+                    if self.has_edge(n, e_id):
+                        local_edges.append(self.get_edge_ids(((n, e_id),))[0])
+                    elif self.has_edge(e_id, n):
+                        local_edges.append(self.get_edge_ids(((e_id, n),))[0])
+                    else:
+                        raise KeyError('No edge found between {} and {}'.format(n, e_id))
+                answer.append(tuple(local_edges))
+            elif e_id in self.edges:
+                self._logger.warning('Requested get_edges from an edge')
+                answer.append((e_id,))
+        return tuple(answer)
+
+    def get_edge_list(self):
+        raise NotImplementedError
+        # TODO: Implement this
+
     def get_neighbours(self, node_ids):
         """Get the neighbours respecting directionality"""
+        node_ids = utils.to_list(node_ids)
         answer = []
         for node_id in node_ids:
             answer.append(tuple(self.neighbors(node_id)))
@@ -189,17 +258,22 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
 
     def get_neighbours_undir(self, node_ids):
         """Get the neighbours regardless of directionality"""
+        node_ids = utils.to_list(node_ids)
         answer = []
         for node_id in node_ids:
             neighbors = (set(self.successors(node_id))
-                        + set(self.predecessors(node_id)) )
+                         | set(self.predecessors(node_id)))
             answer.append(tuple(neighbors))
         return tuple(answer)
 
-    def get_property(self, node_ids=None, key_str=None):
+    def get_ancestor_equations(self):
+        raise NotImplementedError()
+
+    def get_node_property(self, node_ids=None, key_str=None):
         """Return a tuple of the item value for the requested nodes"""
         if node_ids is None:
             node_ids = self.nodes
+        node_ids = utils.to_list(node_ids)
 
         if key_str is None:
             raise ValueError('Property string must be provided')
@@ -207,9 +281,44 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
         return tuple(d[key_str] for n, d in self.nodes(data=True)
                      if n in node_ids)
 
+    def get_edge_property(self, edge_ids=None, key_str=None):
+        """Return a tuple of the item value for the requested nodes"""
+        if edge_ids is None:
+            edge_ids = self.edges
+        edge_ids = utils.to_list(edge_ids)
+
+        if key_str is None:
+            raise ValueError('Property string must be provided')
+
+        return tuple(d[key_str] for _, _, d in self.nx_edges.data('key_str'))
+
+    def get_edge_ids(self, edge_tuples):
+        """Return a tuple of the ids of the provided edge pairs"""
+        # TODO: Check if input is tuple of tuples
+        answer = []
+        for pair in edge_tuples:
+            answer.append(self.nx_edges[pair[0], pair[1]]['id'])
+        return tuple(answer)
+
+    def get_edge_ids_undir(self, edge_tuples):
+        """Return a tuple of the ids of the provided edge pairs
+        Disregard directionality"""
+        answer = []
+        for pair in edge_tuples:
+            try:
+                answer.append(self.nx_edges[pair[0], pair[1]]['id'])
+            except KeyError:
+                try:
+                    answer.append(self.nx_edges[pair[1], pair[0]]['id'])
+                except KeyError:
+                    raise KeyError('Node pair {} does not exist in graph {}'.
+                                   format(pair, self['mdl_name']))
+        return tuple(answer)
+
     # Set methods
     def set_e2v(self, edge_ids):
         """Direct an edge pair from equations to variables"""
+        edge_ids = utils.to_list(edge_ids)
         edges = self._get_edge_pairs(edge_ids)
         for n1, n2 in edges:
             if n1 in self.variables:
@@ -217,15 +326,28 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
 
     def set_v2e(self, edge_ids):
         """Direct an edge pair from variables to equations"""
+        edge_ids = utils.to_list(edge_ids)
         edges = self._get_edge_pairs(edge_ids)
         for n1, n2 in edges:
             if n1 in self.equations:
                 self.remove_edge(n1, n2)
 
     def set_edge_weight(self, edge_ids, weights):
+        edge_ids = utils.to_list(edge_ids)
         edges = self._get_edge_pairs(edge_ids)
         for n1, n2, weight in zip(edges, weights):
             self.edges[n1, n2]['weight'] = weight
+
+# =============================================================================
+#     Other methods
+# =============================================================================
+
+    def has_cycles(self):
+        raise NotImplementedError
+
+# =============================================================================
+#     Custom properties
+# =============================================================================
 
     @property
     def num_eqs(self):
@@ -244,6 +366,7 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
         """
         return len(set(self.edges))
 
+    # TODO: Add caching functionality
     @property
     def equations(self):
         """Return the equation ids as a tuple"""
