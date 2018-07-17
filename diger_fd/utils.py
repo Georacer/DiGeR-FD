@@ -96,6 +96,11 @@ def to_list(arg):
         return arg
 
 
+def filter_dunder(str_list):
+    """Filter out the dunder strings of the input"""
+    return [string for string in str_list if string[:2] != '__']
+
+
 # =============================================================================
 # Errors and Warnings
 # =============================================================================
