@@ -107,7 +107,6 @@ class GraphBackend(dgrlog.LogMixin, metaclass=utils.SingletonMeta):
         """Mark a graph as initalized and available for use"""
         self.graphs_metadata[mdl_name]['is_initialized'] = True
 
-
     def check_initialized(self, mdl_name):
         if not self.graphs_metadata[mdl_name]['is_initialized']:
             raise BadGraphError('Graph not initialized yet')
@@ -119,6 +118,7 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
         super().__init__(name=mdl_name)
         # Remap networkx edges. .edges is meant to be a public API
         self.nx_edges = super().edges
+        self.matchings = []  # Container for matchings corresponding to this graph
 
     # Add methods
     def add_equations(self, equ_ids):
@@ -158,7 +158,7 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
 
     def del_edges(self, edge_ids):
         edge_ids = utils.to_list(edge_ids)
-        edges = self._get_edge_pairs(edge_ids)
+        edges = self.get_edge_pairs(edge_ids)
         self.remove_edges_from(edges)
 
     # Get methods
@@ -176,7 +176,7 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
             answer.append(tuple(edge_list))
         return tuple(answer)
 
-    def _get_edge_pairs(self, edge_ids):
+    def get_edge_pairs(self, edge_ids):
         """Get the (n1, n2) pairs of edges for the requested edge_ids
         Retuns a tuple of tuples with max 2 tuples"""
         edge_ids = utils.to_list(edge_ids)
@@ -195,7 +195,7 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
             if e_id in self.variables:
                 answer.append(tuple(self.get_neighbours_undir(e_id)))
             elif e_id in self.edges:
-                u, v = self._get_edge_pairs(e_id)[0]  # Get the first of the max 2 pairs
+                u, v = self.get_edge_pairs(e_id)[0]  # Get the first of the max 2 pairs
                 if u in self.equations:
                     answer.append((u,))
                 else:
@@ -212,7 +212,7 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
             if e_id in self.equations:
                 answer.append(tuple(self.get_neighbours_undir(e_id)))
             elif e_id in self.edges:
-                u, v = self._get_edge_pairs(e_id)[0]  # Get the first of the max 2 pairs
+                u, v = self.get_edge_pairs(e_id)[0]  # Get the first of the max 2 pairs
                 if u in self.variables:
                     answer.append((u,))
                 else:
@@ -319,7 +319,7 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
     def set_e2v(self, edge_ids):
         """Direct an edge pair from equations to variables"""
         edge_ids = utils.to_list(edge_ids)
-        edges = self._get_edge_pairs(edge_ids)
+        edges = self.get_edge_pairs(edge_ids)
         for n1, n2 in edges:
             if n1 in self.variables:
                 self.remove_edge(n1, n2)
@@ -327,16 +327,42 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
     def set_v2e(self, edge_ids):
         """Direct an edge pair from variables to equations"""
         edge_ids = utils.to_list(edge_ids)
-        edges = self._get_edge_pairs(edge_ids)
+        edges = self.get_edge_pairs(edge_ids)
         for n1, n2 in edges:
             if n1 in self.equations:
                 self.remove_edge(n1, n2)
 
     def set_edge_weight(self, edge_ids, weights):
         edge_ids = utils.to_list(edge_ids)
-        edges = self._get_edge_pairs(edge_ids)
+        edges = self.get_edge_pairs(edge_ids)
         for n1, n2, weight in zip(edges, weights):
             self.edges[n1, n2]['weight'] = weight
+
+
+class Matching():
+    """Implementation of a matching edge set"""
+
+    def __init__(self, graph):
+        self.graph = graph
+        self.edges = set()  # Edges are represented by their ID
+        self.covered_vertices = set()
+        self.cost = None
+
+    def add_edge(self, e_id):
+        if self.validate_edge(e_id):
+            self.edges.add(e_id)
+            u, v = self.graph.get_edge_pairs(e_id)
+            self.covered_vertices.add(u)
+            self.covered_vertices.add(v)
+        else:
+            raise GraphInterfaceError('Tried to add invalide edge to matching')
+
+    def validate_edge(self, e_id):
+        u, v = self.graph.get_edge_pairs(e_id)
+        if (u in self.covered_vertices) or (v in self.covered_vertices):
+            return False
+        else:
+            return True
 
 # =============================================================================
 #     Other methods
