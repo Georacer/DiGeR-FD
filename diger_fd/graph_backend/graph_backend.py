@@ -338,32 +338,6 @@ class BipartiteGraph(nx.DiGraph, dgrlog.LogMixin):
         for n1, n2, weight in zip(edges, weights):
             self.edges[n1, n2]['weight'] = weight
 
-
-class Matching():
-    """Implementation of a matching edge set"""
-
-    def __init__(self, graph):
-        self.graph = graph
-        self.edges = set()  # Edges are represented by their ID
-        self.covered_vertices = set()
-        self.cost = None
-
-    def add_edge(self, e_id):
-        if self.validate_edge(e_id):
-            self.edges.add(e_id)
-            u, v = self.graph.get_edge_pairs(e_id)
-            self.covered_vertices.add(u)
-            self.covered_vertices.add(v)
-        else:
-            raise GraphInterfaceError('Tried to add invalide edge to matching')
-
-    def validate_edge(self, e_id):
-        u, v = self.graph.get_edge_pairs(e_id)
-        if (u in self.covered_vertices) or (v in self.covered_vertices):
-            return False
-        else:
-            return True
-
 # =============================================================================
 #     Other methods
 # =============================================================================
@@ -410,3 +384,28 @@ class Matching():
         """Return the edge ids as a tuple"""
         return tuple(edge_id for _, _, edge_id in self.nx_edges.data('id'))
 
+
+class Matching():
+    """Implementation of a matching edge set"""
+
+    def __init__(self, graph):
+        self.graph = graph
+        self.edges = set()  # Edges are represented by their ID
+        self.covered_vertices = set()
+        self.cost = None
+
+    def add_edge(self, e_id):
+        if self.validate_edge(e_id):
+            self.edges.add(e_id)
+            u, v = self.graph.get_edge_pairs(e_id)
+            self.covered_vertices.add(u)
+            self.covered_vertices.add(v)
+        else:
+            raise GraphInterfaceError('Tried to add invalide edge to matching')
+
+    def validate_edge(self, e_id):
+        u, v = self.graph.get_edge_pairs(e_id)
+        if (u in self.covered_vertices) or (v in self.covered_vertices):
+            return False
+        else:
+            return True

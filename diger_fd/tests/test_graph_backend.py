@@ -88,10 +88,10 @@ class TestBasic():
 
     def test_get_edge_pairs(self):
         add_g1(self.gb)
-        pairs_7 = self.gb['g1']._get_edge_pairs(7)
+        pairs_7 = self.gb['g1'].get_edge_pairs(7)
         assert((6, 2) in pairs_7)
         assert((2, 6) in pairs_7)
-        pairs_8 = self.gb['g1']._get_edge_pairs(8)
+        pairs_8 = self.gb['g1'].get_edge_pairs(8)
         assert(((6, 4),) == pairs_8)
 
     def test_get_edge_ids(self):
