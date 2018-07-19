@@ -81,6 +81,14 @@ class ModelProperties():
         else:
             raise KeyError('{} property is not set'.format(key))
 
+    def get_active_properties(self):
+        """Get a dict with the active properties
+        except model and element_id"""
+        answer = self.to_dict()
+        for key in ['model', 'element_id']:
+            del answer[key]
+
+        return answer
 
 
 MdlProps = ModelProperties
@@ -297,7 +305,7 @@ class DBQuery():
     """A query to the structural engine database"""
 
     def __init__(self, db_operation=None, modifier=None):
-        valid_operations = ('get', 'set')
+        valid_operations = ('get', 'add', 'edit', 'del')
         valid_modifiers = (None, 'or', 'and')
 
         if db_operation is None:
@@ -455,12 +463,13 @@ def dbwrap(func):
             retval = func(db_adapter, cursor, *args, **kwargs)
             cursor.execute("COMMIT")
         except Exception as e:
-            cursor.exectute("ROLLBACK")
+            cursor.execute("ROLLBACK")
             raise e
         finally:
             cursor.close()
 
         return retval
+    return new_func
 
 
 class DatabaseAdapter():
@@ -493,17 +502,33 @@ class DatabaseAdapter():
     def query_parse(self, query):
         if query.db_operation is 'get':
             self.query_get(query)
-        elif query.db_operation is 'set':
-            self.query_set(query)
+        elif query.db_operation is 'add':
+            self.query_add(query)
+        elif query.db_operation is 'edit':
+            self.query_del(query)
+        elif query.db_operation is 'del':
+            self.query_del(query)
 
     @dbwrap
-    def query_set(self, cursor, query):
-        cursor.execute(self.build_set_string(query), tuple(query.itervalues))
+    def query_add(self, cursor, query):
+        query_str, values = self.build_add_string(query)
+        cursor.execute(query_str, values)
 
     @dbwrap
     def query_get(self, cursor, query):
-        cursor.execute(self.build_get_string(query))
+        query_str, values = self.build_get_string(query)
+        cursor.execute(query_str, values)
         return cursor.fetchall()
+
+    @dbwrap
+    def query_edit(self, cursor, query):
+        query_str, values = self.build_edit_string(query)
+        cursor.execute(query_str, values)
+
+    @dbwrap
+    def query_del(self, cursor, query):
+        query_str, values = self.build_del_string(query)
+        cursor.execute(query_str, values)
 
     def build_equations_table_string(self):
         columns = {'element_id': 'element_id INTEGER NOT NULL',
@@ -525,10 +550,10 @@ class DatabaseAdapter():
             if col_name not in EquationProperties().valid_properties:
                 raise KeyError('Invalid column specified in Equations table')
 
-        equations_string = 'CREATE TABLE equations('
+        equations_string = ('CREATE TABLE equations('
                             + ', '.join(column_def for column_def in columns.values())
                             + ', CONSTRAINT CON_MDL_ID PRIMARY KEY (model, element_id)'
-                            + ')'
+                            ')')
         return equations_string
 
     def build_variables_table_string(self):
@@ -537,13 +562,13 @@ class DatabaseAdapter():
                    'is_matched': 'is_matched INTEGER',
                    'alias': 'alias TEXT KEY',
                    'descr': 'description TEXT',
-                   'is_known': 'is_known INTEGER'
-                   'is_measured': 'is_measured INTEGER'
-                   'is_input': 'is_input INTEGER'
-                   'is_output': 'is_output INTEGER'
-                   'is_residual': 'is_residual INTEGER'
-                   'is_vector': 'is_vector INTEGER'
-                   'is_fault': 'is_fault INTEGER'
+                   'is_known': 'is_known INTEGER',
+                   'is_measured': 'is_measured INTEGER',
+                   'is_input': 'is_input INTEGER',
+                   'is_output': 'is_output INTEGER',
+                   'is_residual': 'is_residual INTEGER',
+                   'is_vector': 'is_vector INTEGER',
+                   'is_fault': 'is_fault INTEGER',
                    'is_parameter': 'is_parameter INTEGER'
                    }
         # Check if all column names are valid
@@ -551,18 +576,18 @@ class DatabaseAdapter():
             if col_name not in VariableProperties().valid_properties:
                 raise KeyError('Invalid column specified in Equations table')
 
-        variables_string = 'CREATE TABLE variables('
+        variables_string = ('CREATE TABLE variables('
                             + ', '.join(column_def for column_def in columns.values())
                             + ', CONSTRAINT CON_MDL_ID PRIMARY KEY (model, element_id)'
-                            + ')'
+                            + ')')
         return variables_string
 
     def build_edges_table_string(self):
         columns = {'element_id': 'element_id INTEGER NOT NULL',
                    'model': 'model TEXT NOT NULL',
                    'is_matched': 'is_matched INTEGER',
-                   'is_derivative': 'is_derivative INTEGER'
-                   'is_integral': 'is_integral INTEGER'
+                   'is_derivative': 'is_derivative INTEGER',
+                   'is_integral': 'is_integral INTEGER',
                    'is_non_solvable': 'is_non_solvable INTEGER'
                    }
         # Check if all column names are valid
@@ -570,19 +595,39 @@ class DatabaseAdapter():
             if col_name not in EdgeProperties().valid_properties:
                 raise KeyError('Invalid column specified in Equations table')
 
-        edges_string = 'CREATE TABLE edges('
-                            + ', '.join(column_def for column_def in columns.values())
-                            + ', CONSTRAINT CON_MDL_ID PRIMARY KEY (model, element_id)'
-                            + ')'
+        edges_string = ('CREATE TABLE edges('
+                        + ', '.join(column_def for column_def in columns.values())
+                        + ', CONSTRAINT CON_MDL_ID PRIMARY KEY (model, element_id)'
+                        + ')')
         return edges_string
 
-    def build_edges_set_string(self, query):
+    def get_table_from_query(self, query):
+        if isinstance(query, EdgeQuery):
+            table_name = 'edges'
+        elif isinstance(query, EquationQuery):
+            table_name = 'equations'
+        elif isinstance(query, VariableQuery):
+            table_name = 'variables'
+
+        return table_name
+
+    def get_valid_properties_from_query(self, query):
+        if isinstance(query, EdgeQuery):
+            all_properties = EdgeProperties.valid_properties
+        elif isinstance(query, EquationQuery):
+            all_properties = EquationProperties.valid_properties
+        elif isinstance(query, VariableQuery):
+            all_properties = VariableProperties.valid_properties
+
+        return all_properties
+
+    def build_edges_add_string(self, query):
         return self.build_set_string(query)
 
-    def build_equations_set_string(self, query):
+    def build_equations_add_string(self, query):
         return self.build_set_string(query)
 
-    def build_variables_set_string(self, query):
+    def build_variables_add_string(self, query):
         return self.build_set_string(query)
 
     def build_edges_get_string(self, query):
@@ -594,196 +639,62 @@ class DatabaseAdapter():
     def build_variables_get_string(self, query):
         return self.build_get_string(query)
 
-    def build_set_string(self, query):
-        if isinstance(query, EdgeQuery):
-            table_name = 'edges'
-        elif isinstance(query, EquationQuery):
-            table_name = 'equations'
-        elif isinstance(query, VariableQuery):
-            table_name = 'variables'
+    def build_add_string(self, query):
+        table_name = self.get_table_from_query(query)
+        all_properties = query.to_dict()
 
-        keys = query.to_dict().keys()
-        values = query.to_dict().values()
+        keys = all_properties.keys()
+        values = all_properties.values()
 
-        query_string = 'INSERT INTO {}('.format(table_name)
+        query_string = ('INSERT INTO {}('.format(table_name)
                         + ', '.join(keys)
                         + ') VALUES('
                         + ', '.join(len(values)*['?'])
-                        + ')'
-        return query_string
+                        + ')')
+        return query_string, values
 
     def build_get_string(self, query):
-        if isinstance(query, EdgeQuery):
-            table_name = 'edges'
-            all_properties = EdgeProperties.valid_properties
-        elif isinstance(query, EquationQuery):
-            table_name = 'equations'
-            all_properties = EquationProperties.valid_properties
-        elif isinstance(query, VariableQuery):
-            table_name = 'variables'
-            all_properties = VariableProperties.valid_properties
+        table_name = self.get_table_from_query(query)
+        all_properties = query.get_active_properties()
 
-        keys = query.to_dict().keys()
-        values = query.to_dict().values()
+        keys = all_properties.keys()
+        values = all_properties.values()
 
         if 'model' not in keys:
             raise StructuralInterfaceError('Please specify model')
 
         if 'element_id' in keys:  # User queries for the whole element row
-            query_string = 'SELECT ALL FROM {} '.format(table_name)
-                            + 'WHERE (model={}, element_id={}'.format(
-                                    query['model'], query['element_id'])
+            query_string = ('SELECT ALL FROM {} '.format(table_name)
+                            + 'WHERE (model = ?, element_id = ?')
+            values = (query.model, query.element_id)
         else:
-            query_string = 'SELECT '
+            query_string = ('SELECT '
                             + ' '.join(keys)
-                            + ' FROM {}'.format(table_name)
-        return query_string
+                            + ' FROM {}'.format(table_name))
+            values = tuple()
+        return query_string, values
 
+    def build_edit_string(self, query):
+        active_properties = query.get_active_properties()
+        keys = active_properties.keys()
+        values = active_properties.values()
 
-#    # Add methods
-#    def add_equations(self, equ_ids):
-#        """Add equations to the graph"""
-#        # Adapt this from GB to SE
-#        self.add_nodes_from(equ_ids, bipartite=NodeType.EQUATION)
-#
-#    def add_variables(self, var_ids):
-#        """Add variables to the graph"""
-#        # Adapt this from GB to SE
-#        self.add_nodes_from(var_ids, bipartite=NodeType.VARIABLE)
-#
-#    def add_edges(self, edges_iterator):
-#        """Add edges to the graph
-#        edges_iterator : contains items (equ_id, var_id, edge_id, weight=None)
-#        """
-#        # Adapt this from GB to SE
-#        for edge in edges_iterator:
-#            if len(edge) == 3:
-#                equ_id, var_id, edge_id = edge
-#                edge_weight = None
-#            elif len(edge) == 4:
-#                equ_id, var_id, edge_id, edge_weight = edge
-#            else:
-#                raise GraphInterfaceError('Edges are specified by at least (equ_id, var_id, edge_id)')
-#            if edge_weight is None:
-#                edge_weight = 1
-#            self.add_edge(equ_id, var_id, weight=edge_weight, id=edge_id)
-#
-#    # Delete methods
-#    def del_equations(self, equ_ids):
-#        """Delete equations from graph"""
-#        # Adapt this from GB to SE
-#        self.remove_nodes_from([equ_ids])
-#
-#    def del_variables(self, var_ids):
-#        """Delete variables from graph"""
-#        # Adapt this from GB to SE
-#        self.remove_nodes_from([var_ids])
-#
-#    def del_edges(self, edge_ids):
-#        # Adapt this from GB to SE
-#        edges = self._get_edge_pairs(edge_ids)
-#        self.remove_edges_from(edges)
-#
-#    # Get methods
-#    def get_edges(self, node_ids):
-#        """
-#        Get edge_ids of input nodes.
-#        Returns a tuple of tuples for each node_id
-#        """
-#        # Adapt this from GB to SE
-#        answer = []
-#        for node_id in node_ids:
-#            edge_list = []
-#            for _, _, d in self.nx_edges(nbunch=node_id, data=True):
-#                edge_list.append(d[id])
-#            answer.append(tuple(edge_list))
-#        return tuple(answer)
-#
-#    def _get_edge_pairs(self, edge_ids):
-#        """Get the (n1, n2) pairs of edges for the requested edge_ids"""
-#        # Adapt this from GB to SE
-#        answer = []
-#        for n1, n2, edge_id in self.nx_edges.data('id'):
-#            if edge_id in edge_ids:
-#                answer.append((n1, n2))
-#        return tuple(answer)
-#
-#    def get_neighbours(self, node_ids):
-#        """Get the neighbours respecting directionality"""
-#        # Adapt this from GB to SE
-#        answer = []
-#        for node_id in node_ids:
-#            answer.append(tuple(self.neighbors(node_id)))
-#        return tuple(answer)
-#
-#    def get_neighbours_undir(self, node_ids):
-#        """Get the neighbours regardless of directionality"""
-#        # Adapt this from GB to SE
-#        answer = []
-#        for node_id in node_ids:
-#            neighbors = (set(self.successors(node_id))
-#                        + set(self.predecessors(node_id)) )
-#            answer.append(tuple(neighbors))
-#        return tuple(answer)
-#
-#    # Set methods
-#    def set_e2v(self, edge_ids):
-#        """Direct an edge pair from equations to variables"""
-#        # Adapt this from GB to SE
-#        edges = self._get_edge_pairs(edge_ids)
-#        for n1, n2 in edges:
-#            if n1 in self.variables:
-#                self.remove_edge(n1, n2)
-#
-#    def set_v2e(self, edge_ids):
-#        """Direct an edge pair from variables to equations"""
-#        # Adapt this from GB to SE
-#        edges = self._get_edge_pairs(edge_ids)
-#        for n1, n2 in edges:
-#            if n1 in self.equations:
-#                self.remove_edge(n1, n2)
-#
-#    def set_edge_weight(self, edge_ids, weights):
-#        edges = self._get_edge_pairs(edge_ids)
-#        for n1, n2, weight in zip(edges, weights):
-#            self.edges[n1, n2]['weight'] = weight
-#
-#    @property
-#    def num_eqs(self):
-#        """Return the number of equations in the graph"""
-#        # Adapt this from GB to SE
-#        return len(self.equations)
-#
-#    @property
-#    def num_vars(self):
-#        """Return the number of variables in the graph"""
-#        # Adapt this from GB to SE
-#        return len(self.variables)
-#
-#    @property
-#    def num_edges(self):
-#        """Return the number of edges in the graph
-#        Edges with the same ID (two directions) are not counted twice
-#        """
-#        # Adapt this from GB to SE
-#        return len(set(self.edges))
-#
-#    @property
-#    def equations(self):
-#        """Return the equation ids as a tuple"""
-#        # Adapt this from GB to SE
-#        return tuple(n for n, d in self.nodes(data=True)
-#                     if d['bipartite'] == NodeType.EQUATION)
-#
-#    @property
-#    def variables(self):
-#        """Return the variable ids as a tuple"""
-#        # Adapt this from GB to SE
-#        return tuple(n for n, d in self.nodes(data=True)
-#                     if d['bipartite'] == NodeType.VARIABLE)
-#
-#    @property
-#    def edges(self):
-#        """Return the edge ids as a tuple"""
-#        # Adapt this from GB to SE
-#        return tuple(edge_id for _, _, edge_id in self.nx_edges.data('id'))
+        if not all([key in ['model', 'element_id'] for key in keys]):
+            raise StructuralInterfaceError('Please specify model and element_id')
+
+        table_name = self.get_table_from_query(query)
+
+        query_string = ('UPDATE {} SET '.format(table_name)
+                        + ' = ? '.join(keys)
+                        + 'WHERE ( model = ?, element_id = ?)')
+        values = tuple(values + [query.model, query.element_id])
+        return query_string, values
+
+    def build_del_string(self, query):
+        table_name = self.get_table_from_query(query)
+
+        query_string = ('DELETE FROM {} WHERE '.format(table_name)
+                        + '(model = ?, element_id = ?)')
+        values = (query.model, query.element_id)
+
+        return query_string, values
